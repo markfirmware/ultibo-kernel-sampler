@@ -1,0 +1,7 @@
+samplekernels.inc
+*.elf
+*.img
+firmware/
+lib/
+release/
+samplekernels/
