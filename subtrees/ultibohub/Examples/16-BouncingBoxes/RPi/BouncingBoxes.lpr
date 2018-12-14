@@ -41,6 +41,7 @@ program BouncingBoxes;
 
 {Declare some units used by this example.}
 uses
+ SystemRestartStackWithKeyboard,
  RaspberryPi,  {The RaspberryPi unit gives us all the relevant drivers}
  GlobalConfig,
  GlobalConst,

@@ -23,6 +23,7 @@ program HelloWorld;
 
 {We need to declare some units that are used for this example.}
 uses
+  SystemRestartStackWithKeyboard,
   GlobalConst,
   GlobalTypes,
   Threads,

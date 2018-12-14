@@ -28,6 +28,7 @@ program DedicatedCPU;
 {  There is, of course, no Raspberry Pi A/B/A+/B+ or Zero version.             }
 
 uses
+  SystemRestartStackWithKeyboard,
   InitUnit,     {Include InitUnit to allow us to change the startup behaviour}
   RaspberryPi2, {Include RaspberryPi2 to make sure all standard functions are included}
   GlobalConst,

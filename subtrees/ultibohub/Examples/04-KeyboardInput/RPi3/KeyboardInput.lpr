@@ -20,6 +20,7 @@ program KeyboardInput;
 
 {Declare some units used by this example.}
 uses
+  SystemRestartStack,
   GlobalConst,
   GlobalTypes,
   Platform,
@@ -70,6 +71,10 @@ begin
        {If the enter key was pressed, write a new line to the console instead of a
         character}
        ConsoleWindowWriteLn(WindowHandle,'');
+      end
+     else if Character = #27 then
+      begin
+       PopKernel(0);
       end
      else
       begin

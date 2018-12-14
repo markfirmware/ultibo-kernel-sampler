@@ -18,6 +18,7 @@ program WebServer;
 
 {Declare some units used by this example.}
 uses
+  SystemRestartStackWithKeyboard,
   GlobalConst,
   GlobalTypes,
   Platform,
