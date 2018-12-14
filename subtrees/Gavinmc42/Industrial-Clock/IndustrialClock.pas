@@ -5,6 +5,7 @@ program IndustrialClock;
 { VideoCore IV example - OpenVG Shapes Demo                                           }
 
 uses
+  SystemRestartStackWithKeyboard,
   RaspberryPi2, {Include RaspberryPi2 to make sure all standard functions are included}
   BCM2836,
   BCM2709,
