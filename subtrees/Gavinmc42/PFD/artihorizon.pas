@@ -5,6 +5,7 @@ unit artihorizon;
 interface
 
 uses
+  SystemRestartStackWithKeyboard,
   Threads,
   Console,
   SysUtils,
