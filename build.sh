@@ -182,7 +182,7 @@ function testSampler {
 
     sudo rm -rf /boot/samplekernels
     sudo mkdir /boot/samplekernels
-    for KERNEL in IndustrialClock-kernel-rpi2
+    for KERNEL in Blinker-kernel-rpi3
     do
         sudo cp samplekernels/$KERNEL.img /boot/samplekernels
     done

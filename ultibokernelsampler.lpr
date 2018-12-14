@@ -19,6 +19,15 @@ uses
  Console,
  Logging;
 
+const
+ MouseTag=1;
+ KeyboardTag=2;
+ HdmiDisplayTag=4;
+ ThreadsAndCoresTag=8;
+ Vc4GraphicsTag=16;
+ NetworkingTag=32;
+ ProgrammingTag=64;
+
 procedure StartLogging;
 begin
  LOGGING_INCLUDE_COUNTER:=False;
@@ -35,10 +44,21 @@ var
  SampleKernels:Array of String;
  UseableKernels:Array of String;
  OperatingBuildMode:String;
-
-var
  FirstLoop:Boolean;
  I:Integer;
+ TagsMask:Integer;
+
+procedure WriteLnAndClear(S:String);
+begin
+ ConsoleWindowWrite(Console1,S);
+ ConsoleWindowClearEx(Console1,ConsoleWindowGetX(Console1),ConsoleWindowGetY(Console1),ConsoleWindowGetMaxX(Console1),ConsoleWindowGetY(Console1),False);
+ ConsoleWindowWriteLn(Console1,'');
+end;
+
+procedure ClearToEndOfScreen;
+begin
+ ConsoleWindowClearEx(Console1,ConsoleWindowGetMinX(Console1),ConsoleWindowGetY(Console1),ConsoleWindowGetMaxX(Console1),ConsoleWindowGetMaxY(Console1),False);
+end;
 
 procedure AddKernel(Name:String);
 begin
@@ -82,6 +102,50 @@ begin
   end;
 end;
 
+function YesNo(Tag:Integer):String;
+begin
+ if (Tag and TagsMask) <> 0 then
+  Result:='yes'
+ else
+  Result:='no ';
+end;
+
+function FilterIncludes(FileName:String):Boolean;
+var
+ LowerCaseFileName:String;
+begin
+ Result:=True;
+ if TagsMask <> 0 then
+  begin
+   Result:=False;
+   LowerCaseFileName:=LowerCase(FileName);
+   if (AnsiPos('mouse',LowerCaseFileName) <> 0) and ((TagsMask and MouseTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('keyboard',LowerCaseFileName) <> 0) and ((TagsMask and KeyboardTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('cpu',LowerCaseFileName) <> 0) and ((TagsMask and ThreadsAndCoresTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('thread',LowerCaseFileName) <> 0) and ((TagsMask and ThreadsAndCoresTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('screen',LowerCaseFileName) <> 0) and ((TagsMask and HdmiDisplayTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('pfd',LowerCaseFileName) <> 0) and ((TagsMask and Vc4GraphicsTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('industrialclock',LowerCaseFileName) <> 0) and ((TagsMask and Vc4GraphicsTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('web',LowerCaseFileName) <> 0) and ((TagsMask and NetworkingTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('exception',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('pascal',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('log',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
+    Result:=True
+   else if (AnsiPos('timedate',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
+    Result:=True;
+  end;
+end;
+
 var
  Letter:Char;
  SelectedKernelFileName:String;
@@ -94,39 +158,61 @@ begin
  AddKernels;
  FilterKernels;
  KeyboardChar:=Char(0);
+ TagsMask:=0;
  FirstLoop:=True;
  while True do
   begin
    if not FirstLoop then
     ConsoleGetKey(KeyboardChar,Nil);
-   ConsoleWindowClear(Console1);
+   ConsoleWindowSetXY(Console1,1,1);
    if not SystemRestartStackIsEmpty then
     begin
-     WriteLn('escape key - exit ultibo kernel sampler');
+     WriteLnAndClear('escape key - exit ultibo kernel sampler');
      if KeyboardChar = #27 then
       PopKernel(0);
-     WriteLn('');
+     WriteLnAndClear('');
     end;
+   WriteLnAndClear(Format('Running on a %s',[BoardTypeToString(BoardGetType)]));
+   WriteLnAndClear('');
+   WriteLnAndClear('Press the indicated letter to start the corresponding kernel ...');
+   WriteLnAndClear(' While running the selected kernel, the escape key will return to the list of samples ...');
+   WriteLnAndClear(' Also, if power is removed and restored, the system will return to the list of samples');
+   WriteLnAndClear('');
+   for I:=0 to 6 do
+    if KeyboardChar = Char(Ord('1') + I) then
+     begin
+      if (TagsMask and (1 shl I)) <> 0 then
+       TagsMask:=TagsMask and (not (1 shl I))
+      else
+       TagsMask:=TagsMask or (1 shl I)
+     end;
+   WriteLnAndClear('Press a digit indicated below to include only kernels that feature the corresponding aspect');
+   WriteLnAndClear(Format('Filter: 1 mouse %s 2 keyboard %s 3 hdmi display %s 4 threads and cores %s 5 vc4 graphics %s 6 networking %s 7 programming %s',[YesNo(MouseTag),YesNo(KeyboardTag),YesNo(HdmiDisplayTag),YesNo(ThreadsAndCoresTag),YesNo(Vc4GraphicsTag),YesNo(NetworkingTag),YesNo(ProgrammingTag)]));
+   WriteLnAndClear('');
    Letter:='a';
    for I:=0 to Length(UseableKernels) - 1 do
     begin
      SelectedKernelFileName:=UseableKernels[I];
-     WriteLn(Letter + ' ' + SelectedKernelFileName);
-     if KeyboardChar = Letter then
+     if FilterIncludes(SelectedKernelFileName) then
       begin
-       if FileExists('c:\samplekernels\' + SelectedKernelFileName) then
+       WriteLnAndClear(Letter + ' ' + SelectedKernelFileName);
+       if KeyboardChar = Letter then
         begin
-         PushKernel('ultibokernelsampler-config.txt','samplekernels/' + selectedKernelFileName,'samplekernels/empty-cmdline.txt');
-        end
-       else
-        begin
-         WriteLn('');
-         WriteLn(Format('%s is not on the sd card',[SelectedKernelFileName]));
-         WriteLn('');
+         if FileExists('c:\samplekernels\' + SelectedKernelFileName) then
+          begin
+           PushKernel('ultibokernelsampler-config.txt','samplekernels/' + selectedKernelFileName,'samplekernels/empty-cmdline.txt');
+          end
+         else
+          begin
+           WriteLnAndClear('');
+           WriteLnAndClear(Format('%s is not on the sd card',[SelectedKernelFileName]));
+           WriteLnAndClear('');
+          end;
         end;
+       Letter:=Char(Ord(Letter) + 1);
       end;
-     Letter:=Char(Ord(Letter) + 1);
     end;
+   ClearToEndOfScreen;
    FirstLoop:=False;
   end;
 end.
