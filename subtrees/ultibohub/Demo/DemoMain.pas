@@ -6,7 +6,8 @@ unit DemoMain;
 interface
 
 {==============================================================================}
-uses GlobalConfig,
+uses SystemRestartStack,
+     GlobalConfig,
      GlobalConst,
      GlobalTypes,
      Platform,
@@ -416,7 +417,7 @@ begin
         begin
          if Data.KeyCode = KEY_CODE_ESCAPE then
           begin
-           SystemRestart(500);
+           PopKernel(500);
           end
          else
           begin

@@ -141,6 +141,8 @@ begin
     Result:=True
    else if (AnsiPos('log',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
     Result:=True
+   else if (AnsiPos('demo',LowerCaseFileName) <> 0) and (((TagsMask and ProgrammingTag) <> 0) or ((TagsMask and KeyboardTag) <> 0) or ((TagsMask and MouseTag) <> 0)) then
+    Result:=True
    else if (AnsiPos('timedate',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
     Result:=True;
   end;
