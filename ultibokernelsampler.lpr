@@ -133,6 +133,8 @@ begin
     Result:=True
    else if (AnsiPos('industrialclock',LowerCaseFileName) <> 0) and ((TagsMask and Vc4GraphicsTag) <> 0) then
     Result:=True
+   else if (AnsiPos('project1',LowerCaseFileName) <> 0) and ((TagsMask and Vc4GraphicsTag) <> 0) then
+    Result:=True
    else if (AnsiPos('web',LowerCaseFileName) <> 0) and ((TagsMask and NetworkingTag) <> 0) then
     Result:=True
    else if (AnsiPos('exception',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
@@ -146,6 +148,17 @@ begin
    else if (AnsiPos('timedate',LowerCaseFileName) <> 0) and ((TagsMask and ProgrammingTag) <> 0) then
     Result:=True;
   end;
+end;
+
+function UsesOpenMax(SelectedKernelFileName:String):Boolean;
+var
+ Lower:String;
+begin
+ Lower:=LowerCase(SelectedKernelFileName);
+ if AnsiPos('project1-kernel',Lower) <> 0 then
+  Result:=True
+ else
+  Result:=False;
 end;
 
 var
@@ -202,7 +215,7 @@ begin
         begin
          if FileExists('c:\samplekernels\' + SelectedKernelFileName) then
           begin
-           PushKernel('ultibokernelsampler-config.txt','samplekernels/' + selectedKernelFileName,'samplekernels/empty-cmdline.txt');
+           PushKernel('ultibokernelsampler-config.txt','samplekernels/' + selectedKernelFileName,'samplekernels/empty-cmdline.txt',UsesOpenMax(SelectedKernelFileName));
           end
          else
           begin

@@ -1,4 +1,5 @@
 samplekernels.inc
+systemrestartstack.txt
 *.elf
 *.img
 firmware/

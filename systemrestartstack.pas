@@ -3,7 +3,7 @@ unit SystemRestartStack;
 {$mode objfpc}{$H+}
 
 interface
-procedure PushKernel(CurrentConfigFileName,KernelFileName,CmdFileName:String);
+procedure PushKernel(CurrentConfigFileName,KernelFileName,CmdFileName:String;UsesOpenMax:Boolean);
 procedure PopKernel(Parameter:Integer);
 function SystemRestartStackIsEmpty:Boolean;
 procedure WaitForBootFilesStable;
@@ -121,7 +121,7 @@ begin
   end;
 end;
 
-procedure PushKernel(CurrentConfigFileName,KernelFileName,CmdFileName:String);
+procedure PushKernel(CurrentConfigFileName,KernelFileName,CmdFileName:String;UsesOpenMax:Boolean);
 var
  StackFile:TextFile;
  ConfigFile:TextFile;
@@ -138,6 +138,11 @@ begin
  WriteStack;
  AssignFile(ConfigFile,'config.txt');
  Rewrite(ConfigFile);
+ if UsesOpenMax then
+  begin
+   WriteLn(ConfigFile,'start_x=1');
+   WriteLn(ConfigFile,'gpu_mem=128');
+  end;
  WriteLn(ConfigFile,'kernel=' + KernelFileName);
  WriteLn(ConfigFile,'cmdline=' + CmdFileName);
  Close(ConfigFile);

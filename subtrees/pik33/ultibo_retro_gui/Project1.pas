@@ -4,6 +4,7 @@ program Project1;
 {$mode objfpc}{$H+}
 
 uses  //Ultibo units
+  SystemRestartStack,
   ProgramInit,
   GlobalConfig,
   GlobalConst,
@@ -306,6 +307,11 @@ closefile(f);
       fmthread.start;
       end;
     end;
+
+  if (raspbian.dblclicked) or (key=ord('r')) or (key=27) then
+   begin
+    PopKernel(0);
+   end;
 
   if (raspbian.dblclicked) or (key=ord('r')) then
     begin

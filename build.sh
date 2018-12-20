@@ -140,15 +140,17 @@ function createRelease {
     done
 
     set -x
+    touch release/kernel7.img
     cp -a empty-cmdline.txt samplekernels/
     cp -a *.img release/
     cp -a samplekernels/ release/
+    cp -a subtrees/pik33/ultibo_retro_gui/Colors/ release/
     cp -a $LPR-config.txt $LPR-cmdline.txt release/
     cp -a release/$LPR-config.txt release/config.txt
     echo "$REPO $VERSION" >> release/release-message.md
     echo >> release/release-message.md
     cat release-message.md >> release/release-message.md
-    cp -a firmware/boot/bootcode.bin firmware/boot/start.elf firmware/boot/fixup.dat release/
+    cp -a firmware/boot/* release/
 
     cd release
     zip -r $ZIPFILE *
@@ -182,7 +184,7 @@ function testSampler {
 
     sudo rm -rf /boot/samplekernels
     sudo mkdir /boot/samplekernels
-    for KERNEL in Blinker-kernel-rpi3
+    for KERNEL in Project1-kernel-rpi3
     do
         sudo cp samplekernels/$KERNEL.img /boot/samplekernels
     done
