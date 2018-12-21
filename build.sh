@@ -76,7 +76,15 @@ function buildKernels {
     do
         pushd $(dirname $LINE) >& /dev/null
             SHORTEST_LPI_NAME=$(basename $LINE .lpi)
-            grep -il SystemRestartStack *.lpr *.pas >& /dev/null
+            ls $SHORTEST_LPI_NAME.lpr >& /dev/null
+            USING_LPR=$?
+            if [[ $USING_LPR == 0 ]]
+            then
+                EXTENSION=lpr
+            else
+                EXTENSION=pas
+            fi
+            grep -il SystemRestartStack $SHORTEST_LPI_NAME.$EXTENSION >& /dev/null
             USING_STACK=$?
             if [[ $USING_STACK == 0 ]]
             then
@@ -184,7 +192,7 @@ function testSampler {
 
     sudo rm -rf /boot/samplekernels
     sudo mkdir /boot/samplekernels
-    for KERNEL in Project1-kernel-rpi3
+    for KERNEL in Camera-kernel-rpi3
     do
         sudo cp samplekernels/$KERNEL.img /boot/samplekernels
     done

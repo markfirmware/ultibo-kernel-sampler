@@ -157,6 +157,8 @@ begin
  Lower:=LowerCase(SelectedKernelFileName);
  if AnsiPos('project1-kernel',Lower) <> 0 then
   Result:=True
+ else if AnsiPos('camera-kernel',Lower) <> 0 then
+  Result:=True
  else
   Result:=False;
 end;

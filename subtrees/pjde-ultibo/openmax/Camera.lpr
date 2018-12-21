@@ -4,6 +4,7 @@ program Camera;
 {$define use_tftp}    // if PI not connected to LAN and set for DHCP then remove this
 
 uses
+  SystemRestartStack,
   RaspberryPi3,
   GlobalConfig,
   GlobalConst,
@@ -204,6 +205,8 @@ begin
   ilclient_cleanup_components (@list);
   OMX_Deinit;
   ilclient_destroy (client);
+  if ch = #27 then
+   PopKernel(0);
 end;
 
 begin
@@ -225,6 +228,13 @@ begin
   FramebufferDeviceGetProperties (DefFrameBuff, @DefFrameProps);
   BCMHostInit;
   camera;
+  Log ('back to main program');
+  while True do
+    begin
+      ConsoleGetKey (ch, nil);
+      if ch = #27 then
+        PopKernel(0);
+    end;
   ThreadHalt (0);
 end.
 
