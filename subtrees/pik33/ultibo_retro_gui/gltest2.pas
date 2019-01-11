@@ -5,17 +5,9 @@ unit gltest2;
 interface
 
 uses
-  Classes, SysUtils, GLES20, DispmanX, VC4, Math, retromalina, mwindows, threads,retro;
+  Classes, SysUtils, GLES20, DispmanX, VC4, Math, retromalina, mwindows, threads,retro,platform,playerunit,blitter, simplegl;
 
-type Pmatrix4=^matrix4;
-     matrix4=array[0..3,0..3] of glfloat;
-type vector4=array[0..3] of glfloat;
 
-const matrix4_zero:matrix4=((0,0,0,0),(0,0,0,0),(0,0,0,0),(0,0,0,0));
-const matrix4_one:matrix4=((1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0,0,1));
-
-operator +(a,b:matrix4):matrix4;
-operator *(a,b:matrix4):matrix4;
 
 procedure gltest2_start;
 
@@ -28,9 +20,14 @@ type TOpenGLThread=class (TThread)
        Constructor Create(CreateSuspended : boolean);
      end;
 
-var programID,vertexID,colorID,texcoordID:GLuint;
-    mvpLoc,positionLoc,colorLoc:GLuint;
-    projectionMat,modelviewMat,mvpMat:matrix4;
+
+
+
+var programID,vertexID,colorID,texcoordID,normalID:GLuint;
+    mvpLoc,positionLoc,colorLoc,lightloc:GLuint;
+    mvLoc,lightsourceloc:GLuint;
+    projectionMat,modelviewMat,mvpMat,lightmat,mvmat,lightsourcemat:matrix4;
+    frames:integer;
 
      //DispmanX window
     DispmanDisplay:DISPMANX_DISPLAY_HANDLE_T;
@@ -51,261 +48,124 @@ var programID,vertexID,colorID,texcoordID:GLuint;
     u_vp_matrix:GLint;
     u_texture:GLint;
     u_palette:GLint;
+    u_scale:GLint;
+    u_delta:GLint;
     a_texcoord:GLint;
+    a_normal:GLint;
+    u_mvmat:GLint;
+    u_lightsourcemat:GLInt;
 
-    uvs:array[0..71] of GLfloat=(
-     0, 0,
-     0, 1,
-     1, 0,
-     1, 0,
-     0, 1,
-     1, 1,
-
-     0, 0,
-     0, 1,
-     1, 0,
-     1, 0,
-     0, 1,
-     1, 1,
-
-     0, 0,
-     0, 1,
-     1, 0,
-     1, 0,
-     0, 1,
-     1, 1,
-
-     0, 0,
-     0, 1,
-     1, 0,
-     1, 0,
-     0, 1,
-     1, 1,
-
-     0, 0,
-     0, 1,
-     1, 0,
-     1, 0,
-     0, 1,
-     1, 1,
-
-     0, 0,
-     0, 1,
-     1, 0,
-     1, 0,
-     0, 1,
-     1, 1
-  );
 
     pallette:array[0..1023] of byte;
     pallette2:TPallette absolute pallette;
 
-const kVertexCount = 72;
+    texaddr:cardinal;
+    testbitmap:TTexturebitmap;
+
+
 
 //--------------------- Shaders ------------------------------------------------
 
 const VertexSource:String =
- 'precision mediump float;' +
+ 'precision highp float;' +
  'uniform mat4 u_mvpMat;' +
+ 'uniform mat4 u_mvMat;' +
+ 'uniform mat4 u_lightMat;' +
+ 'uniform mat4 u_lightsourceMat;' +
+ 'uniform vec2 u_scale;'+
+ 'uniform vec2 u_delta;'+
  'attribute vec4 a_position;' +
- 'attribute vec4 a_color;' +
  'attribute vec2 a_texcoord;' +
- 'varying vec4 v_color;' +
- 'varying mediump vec2 v_texcoord;'+
+ 'attribute vec4 a_normal;' +
+ 'varying highp vec2 v_texcoord;'+
+ 'varying highp vec3 v_normal;'+
+ 'varying highp vec3 v_lightpos;'+
+ 'varying highp vec3 v_vertexpos;'+
  'void main()' +
  '{' +
- '    gl_Position = u_mvpMat * a_position;' +
- '    v_color = a_color;' +
- '    v_texcoord = a_texcoord; '+
+ '    gl_Position = u_mvpMat * a_position; ' +
+ '    vec4 vp = u_mvMat * a_position;  '+
+ '    v_vertexpos = normalize(vp.xyz);  '+
+ '    v_lightpos = normalize((u_lightsourceMat*vec4(0.0,0.0,0.0,1.0)-vp).xyz); ' +
+ '    v_texcoord = a_texcoord*u_scale+u_delta;  '+
+ '    v_normal = (u_lightMat* a_normal).xyz; '+
  '}';
 
 FragmentSource:String =
- 'varying lowp vec4 v_color;' +
- 'varying mediump vec2 v_texcoord;'+
- 'uniform sampler2D u_texture;'+
- 'uniform sampler2D u_palette;'+
+ 'precision highp float;' +
+ 'varying highp vec2 v_texcoord;'+
+ 'varying highp vec3 v_normal;'+
+ 'varying highp vec3 v_lightpos;'+
+ 'varying highp vec3 v_vertexpos;'+
+ 'uniform highp sampler2D u_texture;'+
+ 'uniform highp sampler2D u_palette;'+
+
  'void main()' +
  '{' +
- 'vec4 p0 = texture2D(u_texture, v_texcoord);'+
- 'vec4 c0 = texture2D(u_palette, vec2(p0.r+0.0001,0.5)); '+
- 'gl_FragColor = c0;'+
- '}';
 
-//--------------------- Shaders with pallette from atari800---------------------
+// specular lighting
+ 'vec3 r=normalize(reflect(v_lightpos,v_normal)); '+
+ 'float cosAlpha = clamp (dot(v_vertexpos,r ) - 0.01, 0.0, 1.0); '+
+ 'cosAlpha = pow(cosAlpha,25.0); '+
+ 'vec4 coscolor= vec4(cosAlpha, cosAlpha, cosAlpha, 0.0); '+
 
-const pallette_vertex_shader =
-        'uniform mat4 u_mvpMat;								\n'+
-	'attribute vec4 a_position;						        \n'+
-	'attribute vec2 a_texcoord;							\n'+
-	'varying mediump vec2 v_texcoord;						\n'+
-	'void main()									\n'+
-	'{										\n'+
-	'	v_texcoord = a_texcoord;						\n'+
-	'	gl_Position = u_vp_matrix * a_position;				        \n'+
-        '}										\n';
+ // diffuse lighting
+ 'float cosTheta = clamp(dot(v_normal, v_lightpos), 0.0, 1.0); '+
 
-const pallette_fragment_shader =
-	'varying mediump vec2 v_texcoord;						\n'+
-	'uniform sampler2D u_texture;							\n'+
-	'uniform sampler2D u_palette;							\n'+
-	'void main()									\n'+
-	'{										\n'+
-	'	vec4 p0 = texture2D(u_texture, v_texcoord);			        \n'+
-	'	vec4 c0 = texture2D(u_palette, vec2((255.0/256.0)*p0.r + 1.0/256.0*0.1, 0.5)); 		\n'+
-	'	gl_FragColor = c0;							\n'+
-	'}                                                                              \n';
+// texture
+ 'float mti = floor(4.0*fract(2048.0*v_texcoord.x)); ' +
+ 'vec4 p0 = texture2D(u_texture, v_texcoord)*0.996; '+
+// if avoiding hack
+ 'float p0f=(1.0-abs(sign(mti)))*p0.r+(1.0-abs(sign(mti-1.0)))*p0.g+(1.0-abs(sign(mti-2.0)))*p0.b+(1.0-abs(sign(mti-3.0)))*p0.a; '+
+ 'vec4 c0 = texture2D(u_palette, vec2(p0f+0.0001,0.5)); '+
+ 'gl_FragColor = coscolor+vec4((c0*(0.9*cosTheta+0.1)).xyz,1); '+
 
+  '}';
 
 // -----------------  test cube ------------------------------------------------
 
-const Vertices:array[0..(6 * 6 * 3) - 1] of GLfloat = (
-
-// Front
- -1.0,  1.0,  1.0,
- -1.0, -1.0,  1.0,
-  1.0,  1.0,  1.0,
-  1.0,  1.0,  1.0,
- -1.0, -1.0,  1.0,
-  1.0, -1.0,  1.0,
-//Right
-  1.0,  1.0,  1.0,
-  1.0, -1.0,  1.0,
-  1.0,  1.0, -1.0,
-  1.0,  1.0, -1.0,
-  1.0, -1.0,  1.0,
-  1.0, -1.0, -1.0,
-//Back
-  1.0,  1.0, -1.0,
-  1.0, -1.0, -1.0,
- -1.0,  1.0, -1.0,
- -1.0,  1.0, -1.0,
-  1.0, -1.0, -1.0,
- -1.0, -1.0, -1.0,
-//Left
- -1.0,  1.0, -1.0,
- -1.0, -1.0, -1.0,
- -1.0,  1.0,  1.0,
- -1.0,  1.0,  1.0,
- -1.0, -1.0, -1.0,
- -1.0, -1.0,  1.0,
-//Top
- -1.0,  1.0, -1.0,
- -1.0,  1.0,  1.0,
-  1.0,  1.0, -1.0,
-  1.0,  1.0, -1.0,
- -1.0,  1.0,  1.0,
-  1.0,  1.0,  1.0,
-//Bottom
- -1.0, -1.0,  1.0,
- -1.0, -1.0, -1.0,
-  1.0, -1.0,  1.0,
-  1.0, -1.0,  1.0,
- -1.0, -1.0, -1.0,
-  1.0, -1.0, -1.0
+var vertices:array[0..107] of GLfloat = (               // 6*6*3-1
+ -1.0, 1.0, 1.0,-1.0,-1.0, 1.0, 1.0, 1.0, 1.0,          // Front
+  1.0, 1.0, 1.0,-1.0,-1.0, 1.0, 1.0,-1.0, 1.0,
+  1.0, 1.0, 1.0, 1.0,-1.0, 1.0, 1.0, 1.0,-1.0,          //Right
+  1.0, 1.0,-1.0, 1.0,-1.0, 1.0, 1.0,-1.0,-1.0,
+  1.0, 1.0,-1.0, 1.0,-1.0,-1.0,-1.0, 1.0,-1.0,          //Back
+ -1.0, 1.0,-1.0, 1.0,-1.0,-1.0,-1.0,-1.0,-1.0,
+ -1.0, 1.0,-1.0,-1.0,-1.0,-1.0,-1.0, 1.0, 1.0,          //Left
+ -1.0, 1.0, 1.0,-1.0,-1.0,-1.0,-1.0,-1.0, 1.0,
+ -1.0, 1.0,-1.0,-1.0, 1.0, 1.0, 1.0, 1.0,-1.0,          //Top
+  1.0, 1.0,-1.0,-1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+ -1.0,-1.0, 1.0,-1.0,-1.0,-1.0, 1.0,-1.0, 1.0,          //Bottom
+  1.0,-1.0, 1.0,-1.0,-1.0,-1.0, 1.0,-1.0,-1.0
+);
+var normals:array[0..107] of GLfloat = (               // 6*6*3-1
+  0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,          // Front
+  0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+  1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,          //Right
+  1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+  0.0, 0.0,-1.0, 0.0, 0.0,-1.0, 0.0, 0.0,-1.0,          //Back
+  0.0, 0.0,-1.0, 0.0, 0.0,-1.0, 0.0, 0.0,-1.0,
+ -1.0, 0.0, 0.0,-1.0, 0.0, 0.0,-1.0, 0.0, 0.0,          //Left
+ -1.0, 0.0, 0.0,-1.0, 0.0, 0.0,-1.0, 0.0, 0.0,
+  0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,          //Top
+  0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+  0.0,-1.0, 0.0, 0.0,-1.0, 0.0, 0.0,-1.0, 0.0,          //Bottom
+  0.0,-1.0, 0.0, 0.0,-1.0, 0.0, 0.0,-1.0, 0.0
 );
 
-Colors:array[0..(6 * 6 * 4) - 1] of GLfloat = (
+uvs:array[0..71] of GLfloat=(
+  0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
+  0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
+  0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
+  0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
+  0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
+  0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1
+ );
 
-//Front}
- 0.0,0.0,1.0,1.0,
- 0.0,0.0,1.0,1.0,
- 0.0,0.0,1.0,1.0,
- 0.0,0.0,1.0,1.0,
- 0.0,0.0,1.0,1.0,
- 0.0,0.0,1.0,1.0,
-//Right
- 1.0,0.0,0.0,1.0,
- 1.0,0.0,0.0,1.0,
- 1.0,0.0,0.0,1.0,
- 1.0,0.0,0.0,1.0,
- 1.0,0.0,0.0,1.0,
- 1.0,0.0,0.0,1.0,
-//Back
- 1.0,1.0,1.0,1.0,
- 1.0,1.0,1.0,1.0,
- 1.0,1.0,1.0,1.0,
- 1.0,1.0,1.0,1.0,
- 1.0,1.0,1.0,1.0,
- 1.0,1.0,1.0,1.0,
-//Left
- 1.0,1.0,0.0,1.0,
- 1.0,1.0,0.0,1.0,
- 1.0,1.0,0.0,1.0,
- 1.0,1.0,0.0,1.0,
- 1.0,1.0,0.0,1.0,
- 1.0,1.0,0.0,1.0,
-//Top
- 0.0,0.7333,0.0,1.0,
- 0.0,0.7333,0.0,1.0,
- 0.0,0.7333,0.0,1.0,
- 0.0,0.7333,0.0,1.0,
- 0.0,0.7333,0.0,1.0,
- 0.0,0.7333,0.0,1.0,
-//Bottom
- 0.752,0.752,0.752,1.0,
- 0.752,0.752,0.752,1.0,
- 0.752,0.752,0.752,1.0,
- 0.752,0.752,0.752,1.0,
- 0.752,0.752,0.752,1.0,
- 0.752,0.752,0.752,1.0
-);
-
-// ---------- test tetrahedron -------------------------------------------------
-
-const Vertices2:array[0..35] of GLfloat = (
-
-// 1
- -1.0, -1.0,  1.0,
-  -1.0,  1.0, -1.0,
-  1.0,  1.0,  1.0,
-
-
-
-  // 2
- -1.0,  1.0, -1.0,
-
- -1.0, -1.0,  1.0,
-   1.0, -1.0, -1.0,
-
- //3
- -1.0, -1.0,  1.0,
-   1.0,  1.0,  1.0,
-  1.0, -1.0, -1.0,
-
-
-//4
-  1.0,  1.0,  1.0,
- -1.0,  1.0, -1.0,
-  1.0, -1.0, -1.0
-
-);
-
-colors2:array[0..47] of GLfloat = (
-
-//1
-1.0,0.0,0.0,1.0,
-0.0,1.0,0.0,1.0,
-0.0,0.0,1.0,1.0,
-
-//2
-1.0,1.0,0.5,1.0,
-0.0,1.0,1.0,1.0,
-1.0,0.0,1.0,1.0,
-
-//3
-1.0,0.5,0.0,1.0,
-0.0,1.0,0.5,1.0,
-0.5,0.0,1.0,1.0,
-
-//4
-1.0,1.0,1.0,1.0,
-0.6,0.6,0.6,1.0,
-0.2,0.2,0.2,1.0
-
-);
-
+//---------------- end of the cube definition
 
 implementation
+
 
 
 constructor TOpenGLThread.create(CreateSuspended : boolean);
@@ -320,53 +180,35 @@ procedure TOpenGLThread.execute;
 label p999;
 
 begin
-ThreadSetPriority(ThreadGetCurrent,7);
-threadsleep(1);
+ThreadSetPriority(ThreadGetCurrent,6);
+ThreadSetAffinity(ThreadGetCurrent,4);
+threadsleep(10);
 if glwindow=nil then
   begin
-  glwindow:=TWindow.create(256,256,'OpenGL helper window');
-  glwindow.decoration.hscroll:=false;
-  glwindow.decoration.vscroll:=false;
-  glwindow.resizable:=false;
-  glwindow.cls(0);
-  glwindow.move(300,400,256,256,0,0);
+  glwindow:=TWindow.create(256 ,16 ,'');
+  glwindow.putpixel(0,0,$11);
+  glwindow.putpixel(1,0,$11);
+  glwindow.putpixel(2,0,$11);
+  glwindow.putpixel(3,0,$11);
+  glwindow.putpixel(4,0,$12);
+  glwindow.putpixel(5,0,$12);
+  glwindow.putpixel(6,0,$12);
+  glwindow.putpixel(7,0,$12);
+  glwindow.putpixel(8,0,$13);
+  glwindow.putpixel(9,0,$13);
+  glwindow.putpixel(10,0,$13);
+  glwindow.putpixel(11,0,$13);
+  glwindow.putpixel(12,0,$14);
+  glwindow.putpixel(13,0,$14);
+  glwindow.putpixel(14,0,$14);
+  glwindow.putpixel(15,0,$14);
   end
 else goto p999;
-glwindow.outtextxyz(0,0,'GL texture test',20,2,2);
-glwindow.outtextxyz(0,32,'GL texture test',36,2,2);
-glwindow.outtextxyz(0,64,'GL texture test',52,2,2);
-glwindow.outtextxyz(0,96,'GL texture test',68,2,2);
-glwindow.outtextxyz(0,128,'GL texture test',84,2,2);
-glwindow.outtextxyz(0,160,'GL texture test',100,2,2);
-glwindow.outtextxyz(0,192,'GL texture test',116,2,2);
-glwindow.outtextxyz(0,224,'GL texture test',132,2,2);
 gltest2_start;
-glwindow.destroy;
 glwindow:=nil;
 p999:
 end;
 
-//--------------------- Operators overloading ----------------------------------
-
-operator +(a,b:matrix4):matrix4;
-
-var i,j:integer;
-
-begin
-for i:=0 to 3 do
-  for j:=0 to 3 do
-    result[i,j]:=a[i,j]+b[i,j];
-end;
-
-operator *(a,b:matrix4):matrix4;
-
-var i,j:integer;
-
-begin
-for i:=0 to 3 do
-  for j:=0 to 3 do
-    result[i,j]:=a[0,j]*b[i,0]+a[1,j]*b[i,1]+a[2,j]*b[i,2]+a[3,j]*b[i,3];
-end;
 
 //------------------------------------------------------------------------------
 //---------------------- Helper functions --------------------------------------
@@ -432,7 +274,7 @@ end;
 
 //------------------------ scale -----------------------------------------------
 
-function scale(var a:matrix4;sx,sy,sz:glfloat):matrix4;
+function scale(a:matrix4;sx,sy,sz:glfloat):matrix4;
 
 var s:matrix4;
 begin
@@ -443,7 +285,7 @@ end;
 
 //----------------------translate ----------------------------------------------
 
-function translate(var a:matrix4;sx,sy,sz:glfloat):matrix4;
+function translate(a:matrix4;sx,sy,sz:glfloat):matrix4;
 
 var s:matrix4;
 begin
@@ -454,7 +296,7 @@ end;
 
 //---------------- frustum projection ------------------------------------------
 
-function projection(var a:matrix4;l,r,b,t,n,f:glfloat):matrix4;
+function projection(a:matrix4;l,r,b,t,n,f:glfloat):matrix4;
 
 label p999;
 
@@ -491,7 +333,7 @@ end;
 //---------------- orthogonal projection ---------------------------------------
 // simplified for symmetric top,bottom,left,right
 
-function ortho(var a:matrix4;l,r,b,t,n,f:glfloat):matrix4;
+function ortho(a:matrix4;l,r,b,t,n,f:glfloat):matrix4;
 
 label p999;
 
@@ -598,6 +440,7 @@ DispmanDisplay:=vc_dispmanx_display_open(DISPMANX_ID_MAIN_LCD);
 DispmanUpdate:=vc_dispmanx_update_start(0);
 DispmanElement:=vc_dispmanx_element_add(DispmanUpdate,DispmanDisplay,0 {Layer},@DestRect,0 {Source},@SourceRect,DISPMANX_PROTECTION_NONE,@Alpha,nil {Clamp},DISPMANX_NO_ROTATE {Transform});
 
+
 //Define an EGL DispmanX native window structure
 
 NativeWindow.Element:=DispmanElement;
@@ -614,7 +457,6 @@ Surface:=eglCreateWindowSurface(Display,Config,@NativeWindow,nil);
 //Connect the EGL context to the EGL surface
 
 eglMakeCurrent(Display,Surface,Surface,Context);
-
 end;
 
 
@@ -624,12 +466,12 @@ var aspect,n,f,w,h,fov:GLfloat;
     Source:PChar;
     VertexShader:GLuint;
     FragmentShader:GLuint;
+    i,j,k:integer;
 
 begin
 
+// initialize a pallette
 pallette2:=ataripallette;
-//for i:=0 to 1023 do pallette[i]:=i mod 256;
-
 for i:=0 to 255 do pallette[4*i+3]:=$FF;
 
 //initialize clear and depth values; enable cull_face
@@ -638,8 +480,6 @@ glClearDepthf(1.0);
 glClearColor(0.0,0.0,0.0,0.0);
 glEnable(GL_CULL_FACE);
 glEnable(GL_DEPTH_TEST);
-//gldepthfunc(GL_LEQUAL);
-//gldepthmask(1);
 
 //Create, upload and compile the vertex shader
 
@@ -660,7 +500,7 @@ glCompileShader(FragmentShader);
 programID:=glCreateProgram;                     // todo: check if it is not 0?
 glAttachShader(programID,VertexShader);
 glAttachShader(programID,FragmentShader);
-glLinkProgram(programID);                 // todo: check a linkstatus with glGetprogramiv
+glLinkProgram(programID);                       // todo: check a linkstatus with glGetprogramiv
 
 //Discard the shaders as they are linked to the program
 
@@ -670,216 +510,236 @@ glDeleteShader(VertexShader);
 //Obtain the locations of some uniforms and attributes from our shaders
 
 mvpLoc:=glGetUniformLocation(programID,'u_mvpMat');
+mvLoc:=glGetUniformLocation(programID,'u_mvMat');
+lightLoc:=glGetUniformLocation(programID,'u_lightMat');
+lightsourceLoc:=glGetUniformLocation(programID,'u_lightsourceMat');
 positionLoc:=glGetAttribLocation(programID,'a_position');
-colorLoc:=glGetAttribLocation(programID,'a_color');
 glEnableVertexAttribArray(positionLoc);
-glEnableVertexAttribArray(colorLoc);
 u_vp_matrix:=glGetUniformLocation(programID,'u_vp_matrix');
 u_texture:=glGetUniformLocation(programID,'u_texture');
 u_palette:=glGetUniformLocation(programID,'u_palette');
+u_scale:=glGetUniformLocation(programID,'u_scale');
+u_delta:=glGetUniformLocation(programID,'u_delta');
 a_texcoord:=glGetAttribLocation(programID,'a_texcoord');
+a_normal:=glGetAttribLocation(programID,'a_normal');
 
 //Generate vertex and color buffers and fill them with our cube data
 
 glGenBuffers(1,@vertexID);
-//glBindBuffer(GL_ARRAY_BUFFER,vertexID);
-//glBufferData(GL_ARRAY_BUFFER,SizeOf(Vertices),@Vertices,GL_STATIC_DRAW);
-
-glGenBuffers(1,@colorID);
-//glBindBuffer(GL_ARRAY_BUFFER,colorID);
-//glBufferData(GL_ARRAY_BUFFER,SizeOf(Colors),@Colors,GL_STATIC_DRAW);
+glBindBuffer(GL_ARRAY_BUFFER,vertexID);
+glVertexAttribPointer(positionLoc,3,GL_FLOAT,GL_FALSE,3 * SizeOf(GLfloat),nil); // location and data format of vertex attributes:index.size,type,normalized,stride,offset
 
 glGenBuffers(1,@texcoordID);
 glBindBuffer(GL_ARRAY_BUFFER,texcoordID);
 glVertexAttribPointer(a_texcoord, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), nil);
 glEnableVertexAttribArray(a_texcoord);
-glBufferData(GL_ARRAY_BUFFER, kVertexCount * sizeof(GLfloat) * 2, @uvs[0], GL_STATIC_DRAW);
+glBufferData(GL_ARRAY_BUFFER, sizeof(uvs), @uvs[0], GL_STATIC_DRAW);
 
+glGenBuffers(1,@normalID);
+glBindBuffer(GL_ARRAY_BUFFER,normalID);
+glVertexAttribPointer(a_normal, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), nil);
+glEnableVertexAttribArray(a_normal);
 
 glGenTextures(1, @texture0);
 glActiveTexture(GL_TEXTURE0);
 glBindTexture(GL_TEXTURE_2D, texture0);
-glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 256, 256, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, glwindow.canvas);
+glTexImage2D(GL_TEXTURE_2D, 0, gl_rgba, 2048, 2048, 0, gl_rgba, GL_UNSIGNED_BYTE,nil); // glwindow.canvas);
+
+glTexSubImage2D(GL_TEXTURE_2D, 0, 0,0, 64 ,16 ,GL_rgba, GL_unsigned_BYTE, glwindow.canvas); // push the texture from window canvas to GPU area
+
+//Find the testure pointer
+i:=$30000000; repeat i:=i+4 until ((lpeek(i)=$11111111) and (lpeek(i+4)=$12121212) and (lpeek(i+8)=$13131313) and (lpeek(i+12)=$14141414)) or (i>$3F000000) ;
+testbitmap.address:=i;testbitmap.w:=8192; testbitmap.l:=2048;
+texaddr:=i;
+glwindow.destroy;
+
 
 glGenTextures(1, @texture1);
 glActiveTexture(GL_TEXTURE1);
 glBindTexture(GL_TEXTURE_2D, texture1); 	// color palette
 glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA, 256, 1, 0, GL_BGRA, GL_UNSIGNED_BYTE, @pallette);
-//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, @pallette);
+
 
 glActiveTexture(GL_TEXTURE0);
 glBindTexture(GL_TEXTURE_2D, texture0);
 glUniform1i(u_texture,0);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); //@note : GL_LINEAR must be implemented in shader because of palette indexes in texture
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_nearest); //@note : GL_LINEAR must be implemented in shader because of palette indexes in texture
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_nearest);
 
 glActiveTexture(GL_TEXTURE1);
 glBindTexture(GL_TEXTURE_2D, texture1);
 glUniform1i(u_palette, 1);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_nearest);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_nearest);
 
 // Calculate the frustum and scale the projection}
 
 
-
-
 aspect:=xres/yres;
-n:=1.0;
-f:=8.0;
+n:=1;
+f:=10.0;
 fov:=30.0;
 h:=tan(2*pi*fov/360)*n;
 w:=h*aspect;
 
-// initialize the projection matrix
+// initialize the projection matrix- uncomment one of them
 
-projectionMat:=projection(matrix4_one,-w,w,-h,h,n,f);
-//projectionMat:=ortho(matrix4_one,-w,w,-h,h,n,f);
+projectionMat:=projection(matrix4_one,-w,w,-h,h,n,f);   //frustum
+//projectionMat:=ortho(matrix4_one,-w,w,-h,h,n,f);      //orho
 
 // initialize the other matrices
 
 modelviewMat:=matrix4_one;
 mvpMat:=matrix4_one;
+lightMat:=matrix4_one;
+makesphere(precision);
+glViewport(0,0,xres,yres);                              // full screen OpenGL view;
+
+glUseProgram(programID);                                // attach a shader program
+glUniform1i(u_texture,0);                               // tell the shader what is the texture numbers
+glUniform1i(u_palette,1);                               // this is a pallette so OpenGL object can show the 8-bit depth window
+
 end;
 
 
 procedure gl_draw;
 
-const frames:integer=0;
-      angle1:glfloat=0;
+// The procedure draws a sphere and a cube lighted by a light source
+
+
+const angle1:glfloat=0;
       angle2:glfloat=0;
       angle3:glfloat=0;
       angle4:glfloat=0;
-      k:integer=0;
-var   i,j:integer;
-      r,g,b:glfloat;
+      angle5:glfloat=0;
+      angle6:glfloat=0;
+      speed:integer=1;
 
-
-
-var modelviewmat2,translatemat:matrix4;
-
+var modelviewmat2:matrix4;
+    tscale:array[0..1] of glfloat=(1.0,1.0);
+    tdelta:array[0..1] of glfloat=(0.0,0.0);
 
 begin
 
-glwindow.tc:=frames mod 256;
-glwindow.println('OpenGL ES 2.0 frame '+inttostr(frames));
-
-//k+=1;
-//for i:=0 to 11 do
-//  begin
-//  j:=(85*i+(k div 3)) mod 256;
-//  r:=ataripallette[j] and $FF;
-//  g:=(ataripallette[j] and $FF00) shr 8;
-//  b:=(ataripallette[j] and $FF0000) shr 16;
-//  colors2[4*i]:=r/256;
-//  colors2[4*i+1]:=g/256;
-//  colors2[4*i]:=b/256;
-//  end;
-
-glViewport(0,0,xres,yres);                              // full screen OpenGL view;
 glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);    // clear the scene
-glUseProgram(programID);                                // attach a shader program
 
-glUniform1i(u_texture,0);
-glUniform1i(u_palette,1);
+tscale[0]:=64/2048;
+tscale[1]:=256/2048;
+tdelta[0]:=0;
+tdelta[1]:=0;
+gluniform2fv(u_scale,1,@tscale);
+gluniform2fv(u_delta,1,@tdelta);
 
-glActiveTexture(GL_TEXTURE0);
-glBindTexture(GL_TEXTURE_2D, texture0);
-glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 256, 256, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, glwindow.canvas);
+// A moving light source
 
+angle5+=0.05*speed;
+if angle5>360 then angle5:=0;
+lightsourcemat:=translate(matrix4_one,25,0.1,0);
+lightsourcemat:=rotate(lightsourcemat,0,1,0,angle5);
+lightsourcemat:=translate(lightsourcemat,0,0,-5);
 
-//glEnableVertexAttribArray(positionLoc);                 // positionloc is a pointer to a_position obtained by glGetAttribLocation while initializing the scene
-glBindBuffer(GL_ARRAY_BUFFER,vertexID);                 // vertexID is a buffer generated and filled at init by vertices
-glBufferData(GL_ARRAY_BUFFER,SizeOf(Vertices),@Vertices,GL_DYNAMIC_DRAW);
-glVertexAttribPointer(positionLoc,3,GL_FLOAT,GL_FALSE,3 * SizeOf(GLfloat),nil); // location and data format of vertex attributes:index.size,type,normalized,stride,offset
+// ------------------- Draw a cube --------------------------------------------
 
-//glEnableVertexAttribArray(colorLoc);                    // the same for color buffer
-glBindBuffer(GL_ARRAY_BUFFER,colorID);
-glBufferData(GL_ARRAY_BUFFER,SizeOf(Colors),@Colors,GL_DYNAMIC_DRAW);
-glVertexAttribPointer(colorLoc,4,GL_FLOAT,GL_FALSE,4 * SizeOf(GLfloat),nil);
-
-// reduce the model size
-
-modelviewmat2:=scale(modelviewmat,0.5,0.5,0.5);
-
-//Rotate the model around the skewed axis
-
-angle1+=1.11;
+// compute rotate angles
+angle1+=1.11*speed;
 if angle1>360 then angle1-=360;
-modelviewmat2:=rotate(modelviewmat2,1.0,-0.374,-0.608,angle1);
-
-// now translate the model one unit away
-
-modelviewmat2:=translate(modelviewmat2,0,0,-2);
-
-// and rotate it again around Y axis
-
-angle2+=0.82;
+angle2+=0.82*speed;
 if angle2>360 then angle2-=360;
 
-modelviewmat2:=rotate(modelviewmat2,0,1,-0,angle2);
+// transform the model
 
-// then translate the model 4 units away
+// A transform matrix for lighting. As it will transform normals only
+// the scale and translate transforms are omitted
 
-modelviewmat2:=translate(modelviewmat2,0,0,-5); // negative are far !
+lightmat:=rotate(modelviewmat,1.0,-0.374,-0.608,angle1);
+lightmat:=rotate(lightmat,0,1,0,angle2);
 
-// compute mvp
-
-mvpmat:=projectionmat*modelviewmat2;
+modelviewmat2:=scale(modelviewmat,0.5,0.5,0.5);                  // reduce size
+modelviewmat2:=rotate(modelviewmat2,1.0,-0.374,-0.608,angle1);   // rotate (around the axis)
+modelviewmat2:=translate(modelviewmat2,0,0,-3);                  // move 3 units into the screen
+modelviewmat2:=rotate(modelviewmat2,0,1,-0,angle2);              // rotate again, now all modell will rotate around the center of the scene
+modelviewmat2:=translate(modelviewmat2,0,0,-5);                  // push it 5 units again or you will not see it
+mvmat:=modelviewmat2;                                            // todo: moving camera
+mvpmat:=projectionmat*mvmat;
 glUniformMatrix4fv(mvpLoc,1,GL_FALSE,@mvpMat);
+glUniformMatrix4fv(lightLoc,1,GL_FALSE,@lightMat);
+glUniformMatrix4fv(mvLoc,1,GL_FALSE,@mvMat);
+glUniformMatrix4fv(lightsourceLoc,1,GL_FALSE,@lightsourceMat);
 
-// try to texture this
+//UVs for the texture
+glBindBuffer(GL_ARRAY_BUFFER,texcoordID);
+glBufferData(GL_ARRAY_BUFFER, sizeof(uvs), @uvs[0], GL_dynamic_DRAW);
 
+//Vertices
+glBindBuffer(GL_ARRAY_BUFFER,vertexID);
+glBufferData(GL_ARRAY_BUFFER,SizeOf(Vertices),@Vertices,GL_DYNAMIC_DRAW);
 
+//Normals
+glBindBuffer(GL_ARRAY_BUFFER,normalID);
+glBufferData(GL_ARRAY_BUFFER,SizeOf(Normals),@normals,GL_DYNAMIC_DRAW);
 
-//	glBindBuffer(GL_ARRAY_BUFFER, buffers[1]); SHOW_ERROR
-//	glVertexAttribPointer(sh->a_texcoord, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), NULL); SHOW_ERROR
-//	glEnableVertexAttribArray(sh->a_texcoord); SHOW_ERROR
-
-//	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[2]); SHOW_ERROR
-
-//	glDrawElements(GL_TRIANGLES, kIndexCount, GL_UNSIGNED_SHORT, 0); SHOW_ERROR
-
-//Draw all of our triangles at once}
+// Draw it
 glDrawArrays(GL_TRIANGLES,0,36);
 
 
-// try to draw a tetrahedron
-//glEnableVertexAttribArray(positionLoc);
-glBindBuffer(GL_ARRAY_BUFFER,vertexID);                 // vertexID is a buffer generated and filled at init by vertices
-glBufferData(GL_ARRAY_BUFFER,SizeOf(Vertices2),@Vertices2,GL_DYNAMIC_DRAW);
-glVertexAttribPointer(positionLoc,3,GL_FLOAT,GL_FALSE,3 * SizeOf(GLfloat),nil); // location and data format of vertex attributes:index.size,type,normalized,stride,offset
-//glEnableVertexAttribArray(colorLoc);                    // the same for color buffer
-glBindBuffer(GL_ARRAY_BUFFER,colorID);
-glBufferData(GL_ARRAY_BUFFER,SizeOf(Colors2),@Colors2,GL_DYNAMIC_DRAW);
-glVertexAttribPointer(colorLoc,4,GL_FLOAT,GL_FALSE,4 * SizeOf(GLfloat),nil);
 
-modelviewmat2:=scale(modelviewmat,0.6,0.6,0.6);
-angle3+=1.33;
+//--------------------------------- Draw a sphere -----------------------------
+
+// compute rotate angles
+angle3+=3.33*speed;
 if angle3>360 then angle3-=360;
-modelviewmat2:=rotate(modelviewmat2,1.0,-0.374,-0.608,angle3);
-modelviewmat2:=translate(modelviewmat2,0,0,-2);
-angle4+=0.97;
+angle4+=0.378*speed;
 if angle4>360 then angle4-=360;
 
+// transform the model
+
+lightmat:=rotate(modelviewmat,0,1,0,angle3);
+lightmat:=rotate(lightmat,1,0,0,150);
+
+modelviewmat2:=scale(modelviewmat,0.6,0.6,0.6);
+modelviewmat2:=rotate(modelviewmat2,0,1,0,angle3);
+modelviewmat2:=rotate(modelviewmat2,1,0,0,150);
+modelviewmat2:=rotate(modelviewmat2,0,1,-0,-angle4);
+modelviewmat2:=translate(modelviewmat2,0,0,-3);
 modelviewmat2:=rotate(modelviewmat2,0,1,-0,angle4);
 modelviewmat2:=translate(modelviewmat2,0,0,-5);
-mvpmat:=projectionmat*modelviewmat2;
+mvmat:=modelviewmat2;                                  // todo: moving camera
+mvpmat:=projectionmat*mvmat;
+
 glUniformMatrix4fv(mvpLoc,1,GL_FALSE,@mvpMat);
+glUniformMatrix4fv(lightLoc,1,GL_FALSE,@lightMat);
+glUniformMatrix4fv(mvLoc,1,GL_FALSE,@mvMat);
+glUniformMatrix4fv(lightsourceLoc,1,GL_FALSE,@lightsourceMat);
 
-//Draw all of our triangles at once}
-glDrawArrays(GL_TRIANGLES,0,12);
+//UVs for the texture
+glBindBuffer(GL_ARRAY_BUFFER,texcoordID);
+glBufferData(GL_ARRAY_BUFFER, svertex*8, @suvs2[0], GL_dynamic_DRAW);
 
-//Disable the attribute arrays}
-//glDisableVertexAttribArray(positionLoc);
-//glDisableVertexAttribArray(colorLoc);
+//Vertices
+glBindBuffer(GL_ARRAY_BUFFER,vertexID);
 
-   {Swap the buffers to display the new scene}
+glBufferData(GL_ARRAY_BUFFER,svertex*12,@Vertices2[0],GL_DYNAMIC_DRAW);
+
+//Normals
+glBindBuffer(GL_ARRAY_BUFFER,normalID);
+glBufferData(GL_ARRAY_BUFFER,svertex*12,@snormals2[0],GL_DYNAMIC_DRAW);
+// Draw it!
+
+glDrawArrays(GL_TRIANGLE_STRIP,0,svertex);
+
+//------------------------------------------------------------------------------
+// Update the texture
+
+testbitmap.box(0,0,128,128,40);
+testbitmap.box(0,128,128,128,120);
+testbitmap.box(128,0,128,128,200);
+testbitmap.box(128,128,128,128,232);
+testbitmap.outtextxyz(0,frames mod 208,' Frame# '+inttostr(frames),(frames div 16) mod 256,2,2);
+cleandatacacherange(testbitmap.address,131072*32);
 
 eglSwapBuffers(Display,Surface);
 
 frames+=1;
-
 end;
 
 procedure gl_cleanup;
@@ -917,7 +777,6 @@ eglTerminate(Display);
 end;
 
 procedure gltest2_start;
-
 
 begin
 BCMHostInit;
