@@ -34,7 +34,7 @@ uses  //Ultibo units
   blitter,
   retro, simpleaudio, {scripttest,} xmp, mwindows, calculatorunit, icons, sysinfo,
   playerunit, captureunit, mandelbrot, notepad, c64, fmsynth,
-  camera2, gltest,gltest2;
+  camera2, gltest,gltest2,glwindows, SimpleGL;
 
 const ver='Colors v. 0.30 --- 2018.04.30';
 
@@ -57,7 +57,7 @@ var
     notepadthread:Tnotepadthread=nil;
     fmthread:TFMSynthThread=nil;
     glthread:TOpenGLThread=nil;
-    oneicon:TIcon ;
+    glwindowsthread:TGLWindowsThread=nil;
     fh,i,j,k:integer;
     message:TWindow;
     scr:cardinal;
@@ -65,10 +65,10 @@ var
     clock:string;
     testptr:pointer;
 
+
 //------------------- The main program
 
 begin
-
 initmachine(144);     // 16+128=hi, double buffered TODO init @19
 threadsleep(1);
 while not DirectoryExists('C:\') do
@@ -188,6 +188,7 @@ repeat
 
   if testicon.dblclicked then
     begin
+    if mousedebugwindow=nil then begin mousedebugwindow:=twindow.create(640,480,'Mouse debug'); mousedebugwindow.move(100,100,640,480,0,0); end;
     testicon.dblclicked:=false;
     end;
 
@@ -262,11 +263,13 @@ repeat
       end;
     end;
 
-  if (basictest.dblclicked) or (key=ord('g')) then
+  if (basictest.dblclicked) then
     begin
     basictest.dblclicked:=false;
     if glwindow=nil then
       begin
+//      glwindowsthread:=Tglwindowsthread.create(true);
+//      glwindowsthread.start;
       glthread:=Topenglthread.create(true);
       glthread.start;
       end;
@@ -274,29 +277,6 @@ repeat
 
   if synth.dblclicked then
     begin
-
-{assignfile(f,drive+'\vgafont.txt');
-rewrite(f);
-for i:=0 to 255 do
-  begin
-  write (f,'(');
-  for j:=0 to 15 do
-    begin
-    k:=vgafont[i,j];
-    k:=((k and $80) shr 7)+
-        ((k and $40) shr 5)+
-         ((k and $20) shr 3)+
-          ((k and $10) shr 1)+
-           ((k and $08) shl 1)+
-            ((k and $04) shl 3)+
-             ((k and $02) shl 5)+
-              ((k and $01) shl 7);
-    write(f,'$'+inttohex(k,2)+', ');
-    end;
-  writeln(f,'),');
-  end;
-closefile(f);
- }
 
     synth.dblclicked:=false;
     if fmwindow=nil then
@@ -306,7 +286,7 @@ closefile(f);
       end;
     end;
 
-  if (raspbian.dblclicked) or (key=ord('r')) then
+  if (raspbian.dblclicked) or (key=197) then
     begin
     raspbian.dblclicked:=false;
     if fileexists(drive+'\ultibo\Raspbian.u') then
