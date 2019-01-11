@@ -12,21 +12,6 @@ fi
 
 MAKE_KERNELS=0
 
-function keep {
-    KEPT=0
-    mkdir -p ../keep
-    rm -rf ../keep/*
-    for FILE in $*
-    do
-        if [[ -e $FILE ]]
-        then
-            KEPT=1
-            echo keeping $FILE
-            mv $FILE ../keep
-        fi
-    done
-}
-
 function buildLpi {
     LPINAME="$1"
     MODE="unknown"
@@ -76,16 +61,13 @@ function buildLpi {
     if (( BUILT == 0 ))
     then
         echo $LPINAME $MODE
+        rm -rf kernel.img kernel7.img kernel.bin $IMAGE_NAME
+        rm -rf lib/
         WD=$(pwd)
-        keep kernel.img kernel7.img kernel.bin $IMAGE_NAME lib
         pushd $LAZDIR >& /dev/null
         ./lazbuild $WD/$LPINAME.lpi
         popd >& /dev/null
         mv kernel* $IMAGE_NAME
-        if [[ $KEPT == 1 ]]
-        then
-            cp -r ../keep/* .
-        fi
     fi
 }
 
@@ -210,7 +192,7 @@ function testSampler {
 
     sudo rm -rf /boot/samplekernels
     sudo mkdir /boot/samplekernels
-    for KERNEL in Project1-kernel-rpi3
+    for KERNEL in Camera-kernel-rpi3
     do
         sudo cp samplekernels/$KERNEL.img /boot/samplekernels
     done
