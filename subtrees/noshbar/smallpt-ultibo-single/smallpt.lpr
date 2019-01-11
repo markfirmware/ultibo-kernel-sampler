@@ -3,11 +3,12 @@ PROGRAM smallpt;
 {$mode objfpc}{$H+}
 
 USES
+  SystemRestartStackWithKeyboard,
   //QEMUVersatilePB,
   //or
-  //RaspberryPi3,
+  RaspberryPi3,
   //or
-  RaspberryPi2,
+  //RaspberryPi2,
   GlobalConfig,
   GlobalConst,
   GlobalTypes,

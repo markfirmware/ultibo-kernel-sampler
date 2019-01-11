@@ -129,6 +129,8 @@ begin
     Result:=True
    else if (AnsiPos('screen',LowerCaseFileName) <> 0) and ((TagsMask and HdmiDisplayTag) <> 0) then
     Result:=True
+   else if (AnsiPos('smallpt',LowerCaseFileName) <> 0) and ((TagsMask and HdmiDisplayTag) <> 0) then
+    Result:=True
    else if (AnsiPos('pfd',LowerCaseFileName) <> 0) and ((TagsMask and Vc4GraphicsTag) <> 0) then
     Result:=True
    else if (AnsiPos('industrialclock',LowerCaseFileName) <> 0) and ((TagsMask and Vc4GraphicsTag) <> 0) then
